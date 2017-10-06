@@ -369,6 +369,7 @@ void TreasureHuntRenderer::InitializeGl() {
   CheckGLError("Reticle program params");
 
   // Object first appears directly in front of user.
+  // (World transforms of the objects)
   model_cube_ = {{{1.0f, 0.0f, 0.0f, 0.0f},
                   {0.0f, 0.707f, -0.707f, 0.0f},
                   {0.0f, 0.707f, 0.707f, -object_distance_},
@@ -481,9 +482,11 @@ void TreasureHuntRenderer::DrawFrame() {
     &viewport_left_,
     &viewport_right_,
   };
+  
+  // API reference: https://developers.google.com/vr/ios/ndk/reference/class/gvr/gvr-api#getheadspacefromstartspacerotation
   head_view_ = gvr_api_->GetHeadSpaceFromStartSpaceRotation(target_time);
-  viewport_list_->SetToRecommendedBufferViewports();
-  gvr::BufferViewport reticle_viewport = gvr_api_->CreateBufferViewport();
+  viewport_list_->SetToRecommendedBufferViewports(); // https://developers.google.com/vr/ios/ndk/reference/group/base#group__base_1ga21cff221055d2b7ed7c48a55b4a0b1eb
+  gvr::BufferViewport reticle_viewport = gvr_api_->CreateBufferViewport(); // https://developers.google.com/vr/ios/ndk/reference/class/gvr/gvr-api#createbufferviewport
   reticle_viewport.SetSourceBufferIndex(1);
   reticle_viewport.SetReprojection(GVR_REPROJECTION_NONE);
   const gvr_rectf fullscreen = { 0, 1, 0, 1 };
@@ -513,6 +516,10 @@ void TreasureHuntRenderer::DrawFrame() {
     // latter two viewports are for the reticle (one for each eye).
     viewport_list_->SetBufferViewport(2 + eye, reticle_viewport);
 
+	// model_cube_, model_floor_: world transforms
+	// eye_views[eye]: view transform
+	// modelview_cube_[eye] and modelview_floor_[eye] transform vertices
+	// from model space to view space.
     modelview_cube_[eye] = MatrixMul(eye_views[eye], model_cube_);
     modelview_floor_[eye] = MatrixMul(eye_views[eye], model_floor_);
     const gvr_rectf fov = viewport[eye]->GetSourceFov();
@@ -568,6 +575,12 @@ void TreasureHuntRenderer::DrawFrame() {
   gvr_audio_api_->Update();
 }
 
+/**
+ * \brief Resizes the framebuffer to one with the desired size if necessary.
+ *
+ * gvr::SwapChain::ResizeBuffer() is called only if resizing of the framebuffer
+ * is necessary.
+ */
 void TreasureHuntRenderer::PrepareFramebuffer() {
   // Because we are using 2X MSAA, we can render to half as many pixels and
   // achieve similar quality.
