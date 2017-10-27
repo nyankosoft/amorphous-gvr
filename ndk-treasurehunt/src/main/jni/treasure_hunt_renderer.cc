@@ -16,11 +16,17 @@
 #include "treasure_hunt_renderer.h"  // NOLINT
 #include "treasure_hunt_shaders.h"  // NOLINT
 
+#include "MyGvrApp.hpp"
+
 #include <android/log.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <cmath>
 #include <random>
+
+extern bool gDrawCube;
+extern bool gDrawFloor;
+
 
 #define LOG_TAG "TreasureHuntCPP"
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
@@ -58,6 +64,8 @@ static const float kYawLimit = 0.12f;
 // Sound file in APK assets.
 static const char* kObjectSoundFile = "cube_sound.wav";
 static const char* kSuccessSoundFile = "success.wav";
+
+static std::unique_ptr<amorphous::GvrAppBase> kMyApp;
 
 // Convert a GVR matrix to an array of floats suitable for passing to OpenGL.
 static std::array<float, 16> MatrixToGLArray(const gvr::Mat4f& matrix) {
@@ -301,7 +309,7 @@ TreasureHuntRenderer::~TreasureHuntRenderer() {
 
 void TreasureHuntRenderer::InitializeGl() {
   gvr_api_->InitializeGl();
-  multiview_enabled_ = gvr_api_->IsFeatureSupported(GVR_FEATURE_MULTIVIEW);
+  multiview_enabled_ = false;//gvr_api_->IsFeatureSupported(GVR_FEATURE_MULTIVIEW);
   LOGD(multiview_enabled_ ? "Using multiview." : "Not using multiview.");
 
   int index = multiview_enabled_ ? 1 : 0;
@@ -421,6 +429,18 @@ void TreasureHuntRenderer::InitializeGl() {
     audio_initialization_thread_ =
         std::thread(&TreasureHuntRenderer::LoadAndPlayCubeSound, this);
   }
+
+  FILE *fp = fopen("/storage/emulated/0/data/local/myfile.txt","w"); // No success
+  // FILE *fp = fopen("/storage/3230-6232/myfile.txt","w"); // No success
+  //FILE *fp = fopen("/storage/3230-6232/work/myfile.txt","w");
+  if(fp) {
+    fprintf(fp,"Hello, Nyanko.\n");
+    fclose(fp);
+  }
+
+  kMyApp.reset( new MyGvrApp );
+  kMyApp->InitBase();
+  kMyApp->Init();
 }
 
 void TreasureHuntRenderer::ResumeControllerApiAsNeeded() {
@@ -496,6 +516,8 @@ void TreasureHuntRenderer::DrawFrame() {
       ControllerQuatToMatrix(gvr_controller_state_.GetOrientation());
   model_cursor_ = MatrixMul(controller_matrix, model_reticle_);
 
+  gvr::Mat4f perspectives[2];
+
   gvr::Mat4f eye_views[2];
   for (int eye = 0; eye < 2; ++eye) {
     const gvr::Eye gvr_eye = eye == 0 ? GVR_LEFT_EYE : GVR_RIGHT_EYE;
@@ -517,7 +539,7 @@ void TreasureHuntRenderer::DrawFrame() {
     viewport_list_->SetBufferViewport(2 + eye, reticle_viewport);
 
 	// model_cube_, model_floor_: world transforms
-	// eye_views[eye]: view transform
+	// eye_views[eye]: view transform, i.e. world as seen from left/right eye.
 	// modelview_cube_[eye] and modelview_floor_[eye] transform vertices
 	// from model space to view space.
     modelview_cube_[eye] = MatrixMul(eye_views[eye], model_cube_);
@@ -525,6 +547,7 @@ void TreasureHuntRenderer::DrawFrame() {
     const gvr_rectf fov = viewport[eye]->GetSourceFov();
     const gvr::Mat4f perspective =
         PerspectiveMatrixFromView(fov, kZNear, kZFar);
+    perspectives[eye] = perspective;
     modelview_projection_cube_[eye] =
         MatrixMul(perspective, modelview_cube_[eye]);
     modelview_projection_floor_[eye] =
@@ -549,6 +572,13 @@ void TreasureHuntRenderer::DrawFrame() {
   } else {
     DrawWorld(kLeftView);
     DrawWorld(kRightView);
+
+    kMyApp->SetViewTransform(MatrixToGLArray(eye_views[0]));
+    kMyApp->SetProjectionTransform(MatrixToGLArray(perspectives[0]));
+    kMyApp->RenderBase();
+    kMyApp->SetViewTransform(MatrixToGLArray(eye_views[1]));
+    kMyApp->SetProjectionTransform(MatrixToGLArray(perspectives[1]));
+    kMyApp->RenderBase();
   }
   frame.Unbind();
 
@@ -663,8 +693,12 @@ void TreasureHuntRenderer::DrawWorld(ViewType view) {
                pixel_rect.right - pixel_rect.left,
                pixel_rect.top - pixel_rect.bottom);
   }
+
+  if(gDrawCube)
   DrawCube(view);
+  if(gDrawFloor)
   DrawFloor(view);
+
   if (gvr_viewer_type_ == GVR_VIEWER_TYPE_DAYDREAM) {
     DrawDaydreamCursor(view);
   }

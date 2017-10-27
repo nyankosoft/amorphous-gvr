@@ -31,6 +31,9 @@
 #include "vr/gvr/capi/include/gvr_types.h"
 #include "world_layout_data.h"  // NOLINT
 
+// Experimental; we will see if amorphous is viable on Android.
+#include "MyGvrApp.hpp"
+
 class TreasureHuntRenderer {
  public:
   /**
