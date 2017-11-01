@@ -12,6 +12,8 @@
 	
 class MyGvrApp : public amorphous::GvrAppBase
 {
+	std::vector<amorphous::MeshHandle> m_Meshes;
+
 	amorphous::MeshHandle m_Mesh;
 
 	amorphous::ShaderHandle m_Shader;
