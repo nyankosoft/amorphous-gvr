@@ -1,3 +1,30 @@
+//>>>>>>>>>>>>>> Copied and pasted from build.gradle in the root directory of gvr-android-sdk
+
+// The dependencies for NDK builds live inside the .aar files so they need to
+// be extracted before NDK targets can build.
+task extractAudioSo(type: Copy) {
+    from zipTree("${project.rootDir}/libraries/sdk-audio-1.80.0.aar")
+    into "${project.rootDir}/libraries/"
+    include "jni/**/libgvr_audio.so"
+}
+
+task extractGvrSo(type: Copy) {
+    from zipTree("${project.rootDir}/libraries/sdk-base-1.80.0.aar")
+    into "${project.rootDir}/libraries/"
+    include "jni/**/libgvr.so"
+}
+
+task extractNdk { }
+extractNdk.dependsOn extractAudioSo
+extractNdk.dependsOn extractGvrSo
+
+task deleteNdk(type: Delete) {
+    delete "${project.rootDir}/libraries/jni"
+}
+//clean.dependsOn(deleteNdk)
+
+//<<<<<<<<<<<<<< Copied and pasted from build.gradle in the root directory of gvr-android-sdk
+
 buildscript {
     repositories {
         jcenter()
@@ -10,6 +37,9 @@ buildscript {
 allprojects {
     repositories {
         jcenter()
+        maven {
+            url "https://maven.google.com"
+        }
     }
 }
 
@@ -37,9 +67,25 @@ model {
     android.ndk {
         moduleName = "treasurehunt_jni"
         cppFlags.add("-std=c++11")
+
+        // Enables RTTI support.
+        cppFlags.add("-frtti")
+
+        // This sets the path to amorphous, i.e. #include "amorphous/Graphics/abc.hpp" will work.
         cppFlags.add("-I" + file("src/main/jni").absolutePath)
+
         // Add the necessary GVR headers.
         cppFlags.add("-I" + file("${project.rootDir}/libraries/headers").absolutePath)
+
+		// GLEW
+		// Commented out; as it turns out GLEW does not support GLES.
+		// One lessons learned here is that CFlags has to be used to add an include path of C library,
+		// as opposed to cppFlags, which is used for C++ library.
+        //CFlags.add("-I" + file("${project.rootDir}/src/main/jni/glew-2.1.0/include").absolutePath)
+        //cppFlags.add("-I" + file("${project.rootDir}/src/main/jni/glew-2.1.0/include").absolutePath)
+
+		// Will NDK compile FreeType source?
+        //cppFlags.add("-I" + file("${project.rootDir}/src/main/jni/freetype-2.8.1/include").absolutePath)
 
         stl = "gnustl_shared"
         // Add the necessary GVR .so files for all architectures.
@@ -71,33 +117,7 @@ model {
 dependencies {
     compile 'com.google.vr:sdk-audio:1.80.0'
     compile 'com.google.vr:sdk-base:1.80.0'
+    compile 'com.android.support:support-core-utils:26.1.0'
 }
 
-build.dependsOn(':extractNdk')
-
-//>>>>>>>>>>>>>> Copied and pasted from build.gradle in the root directory of gvr-android-sdk
-
-// The dependencies for NDK builds live inside the .aar files so they need to
-// be extracted before NDK targets can build.
-task extractAudioSo(type: Copy) {
-    from zipTree("${project.rootDir}/libraries/sdk-audio-1.80.0.aar")
-    into "${project.rootDir}/libraries/"
-    include "jni/**/libgvr_audio.so"
-}
-
-task extractGvrSo(type: Copy) {
-    from zipTree("${project.rootDir}/libraries/sdk-base-1.80.0.aar")
-    into "${project.rootDir}/libraries/"
-    include "jni/**/libgvr.so"
-}
-
-task extractNdk { }
-extractNdk.dependsOn extractAudioSo
-extractNdk.dependsOn extractGvrSo
-
-task deleteNdk(type: Delete) {
-    delete "${project.rootDir}/libraries/jni"
-}
-clean.dependsOn(deleteNdk)
-
-//<<<<<<<<<<<<<< Copied and pasted from build.gradle in the root directory of gvr-android-sdk
+build.dependsOn('extractNdk')
