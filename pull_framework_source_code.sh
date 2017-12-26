@@ -8,9 +8,14 @@ cp -rf $src_dir/framework/amorphous/*.hpp   $dest_dir/
 
 # Support module
 cp -rf $src_dir/framework/amorphous/Support $dest_dir/
+#cp -rf $src_dir/framework/amorphous/Support/fwd.hpp             $dest_dir/
+#cp -rf $src_dir/framework/amorphous/Support/lfs.hpp             $dest_dir/
+#cp -rf $src_dir/framework/amorphous/Support/SafeDelete.hpp      $dest_dir/
+#cp -rf $src_dir/framework/amorphous/Support/BitmapImage_stb.*   $dest_dir/
+#cp -rf $src_dir/framework/amorphous/Support/Profile.*           $dest_dir/
 rm -rf $dest_dir/Support/OpenAES
 rm -rf $dest_dir/Support/AutoResourceArchiver.*
-rm -rf $dest_dir/Support/CameraController*
+rm -rf $dest_dir/Support/CameraController_Win32.*
 
 # 3DMath module
 cp -rf $src_dir/framework/amorphous/3DMath $dest_dir/
@@ -21,6 +26,18 @@ mkdir $dest_dir/XML
 cp -f $src_dir/framework/amorphous/XML/fwd.hpp                    $dest_dir/XML/
 cp -f $src_dir/framework/amorphous/XML/XMLNode.hpp                $dest_dir/XML/
 cp -f $src_dir/framework/amorphous/XML/LoadFromXMLNode_3DMath.hpp $dest_dir/XML/
+
+# Input module
+mkdir $dest_dir/Input
+mkdir $dest_dir/Input/ForceFeedback
+cp -rf $src_dir/framework/amorphous/Input/Android                 $dest_dir/Input/
+cp -f $src_dir/framework/amorphous/Input/fwd.hpp                  $dest_dir/Input/
+cp -f $src_dir/framework/amorphous/Input/InputHandler.hpp         $dest_dir/Input/
+cp -f $src_dir/framework/amorphous/Input/InputHub.*               $dest_dir/Input/
+cp -f $src_dir/framework/amorphous/Input/InputDevice.*            $dest_dir/Input/
+cp -f $src_dir/framework/amorphous/Input/InputDeviceGroup.hpp     $dest_dir/Input/
+cp -f $src_dir/framework/amorphous/Input/KeyboardInputDevice.hpp  $dest_dir/Input/
+cp -f $src_dir/framework/amorphous/Input/ForceFeedback/fwd.hpp    $dest_dir/Input/ForceFeedback/
 
 # Utilities module; this module was meant to provide high-level features for application code,
 # but some of the code of Graphics module ended up using them.
@@ -71,4 +88,4 @@ cp -rf stubs/amorphous/*            $dest_dir/
 # App module
 
 mkdir $dest_dir/App
-cp -f  $src_dir/framework/amorphous/App/GvrAppBase.*                  $dest_dir/App/
+cp -rf  $src_dir/framework/amorphous/App/Android                  $dest_dir/App/

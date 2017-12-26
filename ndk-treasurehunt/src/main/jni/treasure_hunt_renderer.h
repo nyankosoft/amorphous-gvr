@@ -76,6 +76,10 @@ class TreasureHuntRenderer {
    */
   void OnResume();
 
+  void OnKeyDown(int key_code);
+
+  void OnKeyUp(int key_code);
+
  private:
   int CreateTexture(int width, int height, int textureFormat, int textureType);
 

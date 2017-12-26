@@ -28,6 +28,7 @@ import android.view.View;
 import android.Manifest;
 import android.support.v4.app.ActivityCompat;
 import android.content.pm.PackageManager;
+import android.content.res.AssetManager;
 import com.google.vr.ndk.base.AndroidCompat;
 import com.google.vr.ndk.base.GvrLayout;
 import javax.microedition.khronos.egl.EGLConfig;
@@ -241,6 +242,12 @@ public class MainActivity extends Activity {
     return super.onKeyDown(keyCode,event);
   }
 
+  @Override
+  public boolean onKeyUp(int keyCode, KeyEvent event) {
+    nativeOnKeyUp(nativeTreasureHuntRenderer,keyCode);
+    return super.onKeyUp(keyCode,event);
+  }
+
   private void setImmersiveSticky() {
     getWindow()
         .getDecorView()
@@ -283,6 +290,14 @@ public class MainActivity extends Activity {
       }
   }
 
+private void initAssetManager() {
+  //AAssetManager*mgr;
+  //AAssetManager *mgr = AAssetManager_fromJava(env, assetManager);
+  //AAsset* asset=AAssetManager_open(mgr,"Engine256.raw",AASSET_MODE_BUFFER);
+
+  AssetManager mgr = this.getAssets();
+  nativeInitAssetManager(mgr);
+}
 
   private native long nativeCreateRenderer(
       ClassLoader appClassLoader, Context context, long nativeGvrContext);
@@ -294,4 +309,5 @@ public class MainActivity extends Activity {
   private native void nativeOnResume(long nativeTreasureHuntRenderer);
   private native void nativeOnKeyDown(long nativeTreasureHuntRenderer,int keyCode);
   private native void nativeOnKeyUp(long nativeTreasureHuntRenderer,int keyCode);
+  private native void nativeInitAssetManager(AssetManager mgr);
 }
