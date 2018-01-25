@@ -76,7 +76,7 @@ extern "C" {
 ///       gvr_clock_time_point next_vsync = AppGetNextVsyncTime();
 ///
 ///       const gvr_mat4f head_view =
-///           gvr_get_head_space_from_start_space_rotation(gvr, next_vsync);
+///           gvr_get_head_space_from_start_space_transform(gvr, next_vsync);
 ///       const gvr_mat4f left_eye_view = MatrixMultiply(
 ///           gvr_get_eye_from_head_matrix(gvr, GVR_LEFT_EYE), head_view);
 ///       const gvr::Mat4f right_eye_view = MatrixMultiply(
@@ -499,7 +499,12 @@ int32_t gvr_buffer_viewport_get_external_surface_id(
     const gvr_buffer_viewport* viewport);
 
 /// Sets the ID of the externally-managed Surface texture from which this
-/// viewport reads. The ID is issued by GvrLayout.
+/// viewport reads. The ID is issued by GvrLayout. If this viewport does not
+/// read from an external surface, this should be set to
+/// GVR_EXTERNAL_SURFACE_ID_NONE, which is also the default value. If it does
+/// read from an external surface, set this to the ID obtained from GvrLayout
+/// and set the source buffer index to the special value
+/// GVR_BUFFER_INDEX_EXTERNAL_SURFACE.
 ///
 /// @param viewport The buffer viewport.
 /// @param external_surface_id The ID of the surface to read from.
@@ -653,7 +658,9 @@ int32_t gvr_buffer_spec_get_samples(const gvr_buffer_spec* spec);
 void gvr_buffer_spec_set_samples(gvr_buffer_spec* spec, int32_t num_samples);
 
 /// Sets the color format for the buffer to be created. Default format is
-/// GVR_COLOR_FORMAT_RGBA_8888.
+/// GVR_COLOR_FORMAT_RGBA_8888. For all alpha-containing formats, the pixels
+/// are expected to be premultiplied with alpha. In other words, the 60% opaque
+/// primary green color is (0.0, 0.6, 0.0, 0.6).
 ///
 /// @param spec Buffer specification.
 /// @param color_format The color format for the buffer. Valid formats are in
@@ -715,7 +722,7 @@ int32_t gvr_swap_chain_get_buffer_count(const gvr_swap_chain* swap_chain);
 /// @param index Index of the pixel buffer.
 /// @return Size of the specified pixel buffer in frames that will be returned
 ///     from gvr_swap_chain_acquire_frame().
-gvr_sizei gvr_swap_chain_get_buffer_size(gvr_swap_chain* swap_chain,
+gvr_sizei gvr_swap_chain_get_buffer_size(const gvr_swap_chain* swap_chain,
                                          int32_t index);
 
 /// Resizes the specified pixel buffer to the given size. The frames are resized
@@ -773,6 +780,23 @@ gvr_sizei gvr_frame_get_buffer_size(const gvr_frame* frame, int32_t index);
 ///     submitted.
 int32_t gvr_frame_get_framebuffer_object(const gvr_frame* frame, int32_t index);
 
+/// Gets the hardware buffer backing the specified frame buffer.
+///
+/// Hardware buffers (Android NDK type AHardwareBuffer) are used to back frames
+/// if asynchronous reprojection is enabled and GVR_FEATURE_HARDWARE_BUFFERS is
+/// supported (currently on Android O and later Android versions). See the
+/// documentation for the feature enum value for further information.
+///
+/// There is no need to acquire or release the AHardwareBuffer. The swap chain
+/// maintains a reference to it while the frame is acquired.
+///
+/// @param frame The gvr_frame from which to obtain the buffer.
+/// @param index Index of the pixel buffer.
+/// @return Pointer to AHardwareBuffer backing the frame's pixel buffer where
+///     available, or NULL otherwise.
+AHardwareBuffer* gvr_frame_get_hardware_buffer(const gvr_frame* frame,
+                                               int32_t index);
+
 /// Submits the frame for distortion and display on the screen. The passed
 /// pointer is nulled to prevent reuse.
 ///
@@ -802,6 +826,11 @@ void gvr_bind_default_framebuffer(gvr_context* gvr);
 /// @return The current monotonic system time.
 gvr_clock_time_point gvr_get_time_point_now();
 
+/// @deprecated Calls to this method can be safely replaced by calls to
+///    gvr_get_head_space_from_start_space_transform. The new API reflects that
+///    the call *can* return a full 6DoF transform when supported by both the
+///    host platform and the client application.
+///
 /// Gets the rotation from start space to head space.  The head space is a
 /// space where the head is at the origin and faces the -Z direction.
 ///
@@ -816,6 +845,11 @@ gvr_mat4f gvr_get_head_space_from_start_space_rotation(
 
 /// Gets the position and rotation from start space to head space.  The head
 /// space is a space where the head is at the origin and faces the -Z direction.
+///
+/// For platforms that support 6DoF head tracking, the app may also be required
+/// to declare support for 6DoF in order to receive a fully formed 6DoF pose,
+/// e.g., on Android, this requires declaration of support for at least version
+/// 1 of the "android.hardware.vr.headtracking" feature in the manifest.
 ///
 /// @param gvr Pointer to the gvr instance from which to get the pose.
 /// @param time The time at which to get the head pose. The time should be in
@@ -1013,7 +1047,7 @@ class UserPrefs : public WrapperBase<const gvr_user_prefs> {
   }
 };
 
-/// Convenience C++ wrapper for gvr_user_prefs.
+/// Convenience C++ wrapper for gvr_properties.
 class Properties : public WrapperBase<const gvr_properties> {
  public:
   using WrapperBase::WrapperBase;
@@ -1271,8 +1305,13 @@ class Frame : public WrapperBase<gvr_frame> {
   }
 
   /// For more information, see gvr_frame_get_framebuffer_object().
-  int32_t GetFramebufferObject(int32_t index) {
+  int32_t GetFramebufferObject(int32_t index) const {
     return gvr_frame_get_framebuffer_object(cobj(), index);
+  }
+
+  /// For more information, see gvr_frame_get_hardware_buffer().
+  void* GetHardwareBuffer(int32_t index) const {
+    return gvr_frame_get_hardware_buffer(cobj(), index);
   }
 
   /// For more information, see gvr_frame_submit().
@@ -1297,9 +1336,7 @@ class SwapChain : public WrapperBase<gvr_swap_chain, gvr_swap_chain_destroy> {
 
   /// For more information, see gvr_swap_chain_get_buffer_size().
   Sizei GetBufferSize(int32_t index) const {
-    /// TODO(b/62070848): Fix parameter constness on this function
-    return gvr_swap_chain_get_buffer_size(const_cast<gvr_swap_chain*>(cobj()),
-                                          index);
+    return gvr_swap_chain_get_buffer_size(cobj(), index);
   }
 
   /// For more information, see gvr_swap_chain_resize_buffer().
@@ -1554,12 +1591,14 @@ class GvrApi {
   /// @{
 
   /// For more information see gvr_get_head_space_from_start_space_rotation.
-  Mat4f GetHeadSpaceFromStartSpaceRotation(const ClockTimePoint& time_point) {
+  Mat4f GetHeadSpaceFromStartSpaceRotation(
+      const ClockTimePoint& time_point) const {
     return gvr_get_head_space_from_start_space_rotation(context_, time_point);
   }
 
   /// For more information see gvr_get_head_space_from_start_space_transform.
-  Mat4f GetHeadSpaceFromStartSpaceTransform(const ClockTimePoint& time_point) {
+  Mat4f GetHeadSpaceFromStartSpaceTransform(
+      const ClockTimePoint& time_point) const {
     return gvr_get_head_space_from_start_space_transform(context_, time_point);
   }
 

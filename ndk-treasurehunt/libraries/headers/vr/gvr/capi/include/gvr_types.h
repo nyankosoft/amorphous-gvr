@@ -72,6 +72,15 @@ typedef enum {
   /// Support for providing head poses with 6 degrees-of-freedom (orientation
   /// and position).
   GVR_FEATURE_HEAD_POSE_6DOF = 3,
+  /// Indicates that buffers which are part of a frame are backed by Android
+  /// AHardwareBuffer objects. When this feature is available, the function
+  /// gvr_frame_get_hardware_buffer can be called to get the AHardwareBuffer
+  /// pointer.
+  /// Hardware buffers are only supported on Android O and later, on a
+  /// best-effort basis. Future versions of GVR and/or Android may also cease to
+  /// support hardware buffers if the underlying implementation no longer
+  /// supports this rendering path.
+  GVR_FEATURE_HARDWARE_BUFFERS = 4,
 } gvr_feature;
 
 /// @}
@@ -189,8 +198,15 @@ typedef struct gvr_frame_ gvr_frame;
 /// Generic flag type.
 typedef uint32_t gvr_flags;
 
+/// Generic 64-bit flag type.
+typedef uint64_t gvr_flags64;
+
 /// Opaque handle to a collection of properties.
 typedef struct gvr_properties_ gvr_properties;
+
+/// Represents a Daydream Controller API object, used to invoke the
+/// Daydream Controller API.
+typedef struct gvr_controller_context_ gvr_controller_context;
 
 /// A generic container for various pure value types.
 typedef struct gvr_value {
@@ -202,6 +218,7 @@ typedef struct gvr_value {
     int32_t i;
     int64_t i64;
     gvr_flags fl;
+    gvr_flags64 fl64;
     gvr_sizei si;
     gvr_recti ri;
     gvr_rectf rf;
@@ -221,11 +238,18 @@ typedef struct gvr_value {
 
 /// The type of a recentering associated with a GVR_EVENT_RECENTER event.
 typedef enum {
-  /// A recenter event triggered by headset removal and re-attachment.
+  /// Recentering state received from the platform upon starting or resuming the
+  /// application. This event is usually precedes a
+  /// GVR_EVENT_HEAD_TRACKING_RESUMED event in the same frame.
   GVR_RECENTER_EVENT_RESTART = 1,
 
-  /// A recenter event triggered by the controller.
+  /// A recenter event triggered by the controller (e.g. long-press on Home
+  /// button or connecting controller as part of donning UX).
   GVR_RECENTER_EVENT_ALIGNED = 2,
+
+  /// A recenter event triggered by proximity sensor detecting the user has put
+  /// put the headset on (a.k.a. donned the headset).
+  GVR_RECENTER_EVENT_DON = 3,
 } gvr_recenter_event_type;
 
 /// @}
@@ -233,8 +257,12 @@ typedef enum {
 /// Event data associated with a system-initiated GVR_EVENT_RECENTER event. The
 /// client may wish to handle this event to provide custom recentering logic.
 typedef struct gvr_recenter_event_data {
-  gvr_recenter_event_type recenter_type;
+  int32_t recenter_type;  // gvr_recenter_event_type
   gvr_flags recenter_event_flags;
+
+  /// The new transform that maps from "sensor" space to the recentered "start"
+  /// space. This transform can also be retrieved by querying for the
+  /// GVR_PROPERTY_RECENTER_TRANSFORM property.
   gvr_mat4f start_space_from_tracking_space_transform;
 } gvr_recenter_event_data;
 
@@ -268,6 +296,19 @@ typedef enum {
   /// See also gvr_properties_get().
   GVR_ERROR_NO_PROPERTY_AVAILABLE = 1000001,
 } gvr_error;
+
+/// Flags indicating the current status of the tracker.
+/// See also GVR_PROPERTY_TRACKING_STATUS.
+enum {
+  /// The tracker is in an invalid (potentially paused) state, or no valid
+  /// tracker exists.
+  GVR_TRACKING_STATUS_FLAG_INVALID = (1U << 0),
+  /// The tracker is still initializing, so the pose may not be accurate.
+  GVR_TRACKING_STATUS_FLAG_INITIALIZING = (1U << 1),
+  /// The tracker pose is derived from 6DoF sensors and has a translational
+  /// component.
+  GVR_TRACKING_STATUS_FLAG_HAS_6DOF = (1U << 2),
+};
 
 /// Controller API options (bit flags).
 enum {
@@ -451,19 +492,36 @@ typedef enum {
   // Virtual stereo speakers at -30 degrees and +30 degrees.
   GVR_AUDIO_SURROUND_FORMAT_SURROUND_STEREO = 2,
 
-  // 5.1 surround sound according to the ITU-R BS 775 speaker configuration
+  // 5.1 surround sound according to the ITU-R BS.775-3 speaker configuration
   // recommendation:
-  //   - Front left (FL) at 30 degrees.
-  //   - Front right (FR) at -30 degrees.
-  //   - Front center (FC) at 0 degrees.
+  //   - Left (L) at 30 degrees.
+  //   - Right (R) at -30 degrees.
+  //   - Center (C) at 0 degrees.
   //   - Low frequency effects (LFE) at front center at 0 degrees.
-  //   - Left side (LS) at 110 degrees.
-  //   - Right side (RS) at -110 degrees.
+  //   - Left surround (LS) at 110 degrees.
+  //   - Right surround (RS) at -110 degrees.
   //
-  // The 5.1 channel input layout must matches AAC: FL, FR, FC, LFE, LS, RS.
+  // The 5.1 channel input layout must matches AAC: L, R, C, LFE, LS, RS.
   // Note that this differs from the Vorbis/Opus 5.1 channel layout, which
-  // is: FL, FC, FR, LS, RS, LFE.
+  // is: L, C, R, LS, RS, LFE.
   GVR_AUDIO_SURROUND_FORMAT_SURROUND_FIVE_DOT_ONE = 3,
+
+  // 7.1 surround sound according to the ITU-R BS.775-3 speaker configuration
+  // recommendation:
+  //   - Left (FL) at 30 degrees.
+  //   - Right (FR) at -30 degrees.
+  //   - Center (C) at 0 degrees.
+  //   - Low frequency effects (LFE) at front center at 0 degrees.
+  //   - Left surround 1 (LS1) at 90 degrees.
+  //   - Right surround 1 (RS1) at -90 degrees.
+  //   - Left surround 2 (LS2) at 150 degrees.
+  //   - Right surround 2 (LS2) at -150 degrees.
+  //
+  // The 7.1 channel input layout must matches AAC: L, R, C, LFE, LS1, RS1,
+  // LS2, RS2.
+  // Note that this differs from the Vorbis/Opus 7.1 channel layout, which
+  // is: L, C, R, LS1, RS1, LS2, RS2, LFE.
+  GVR_AUDIO_SURROUND_FORMAT_SURROUND_SEVEN_DOT_ONE = 10,
 
   // First-order ambisonics (AmbiX format: 4 channels, ACN channel ordering,
   // SN3D normalization).
@@ -495,13 +553,16 @@ typedef enum {
   // (AmbiX format: 16 channels, ACN channel ordering, SN3D normalization).
   // Channel 17 to 18 contain non-diegetic stereo.
   GVR_AUDIO_SURROUND_FORMAT_THIRD_ORDER_AMBISONICS_WITH_NON_DIEGETIC_STEREO = 9,
+
+  // Note: Next available value is: 11
 } gvr_audio_surround_format_type;
 
 /// Valid color formats for swap chain buffers.
 typedef enum {
-  /// Equivalent to GL_RGBA8
+  /// Equivalent to GL_RGBA8. Pixel values are expected to be premultiplied
+  /// with alpha.
   GVR_COLOR_FORMAT_RGBA_8888 = 0,
-  /// Equivalent to GL_RGB565
+  /// Equivalent to GL_RGB565.
   GVR_COLOR_FORMAT_RGB_565 = 1,
 } gvr_color_format_type;
 
@@ -574,7 +635,9 @@ typedef enum {
   /// The current transform that maps from "sensor" space to the recentered
   /// "start" space. Apps can optionally undo or extend this transform to
   /// perform custom recentering logic with the returned pose, but all poses
-  /// supplied during frame submission are assumed to be in start space.
+  /// supplied during frame submission are assumed to be in start space. This
+  /// transform matches the one reported in the most
+  /// recent gvr_recenter_event_data.
   /// Type: gvr_mat4f
   GVR_PROPERTY_RECENTER_TRANSFORM = 2,
 
@@ -583,25 +646,33 @@ typedef enum {
   /// Type: int (gvr_safety_region_type)
   GVR_PROPERTY_SAFETY_REGION = 3,
 
-  /// Inner radius for the safety cylinder region, outside of which a safety fog
-  /// effect will begin to be applied.
+  /// Distance from safety cylinder axis at which the user's state transitions
+  /// from outside to inside, generating a GVR_EVENT_SAFETY_REGION_ENTER event.
+  /// This value is guaranteed to be less than
+  /// GVR_PROPERTY_SAFETY_CYLINDER_EXIT_RADIUS.
   /// Type: float
-  GVR_PROPERTY_SAFETY_CYLINDER_INNER_RADIUS = 4,
+  GVR_PROPERTY_SAFETY_CYLINDER_ENTER_RADIUS = 4,
 
-  /// Outer radius for the safety cylinder region, outside of which a safety fog
-  /// effect is fully applied.
+  /// Distance from safety cylinder axis at which the user's state transitions
+  /// from inside to outside, generating a GVR_EVENT_SAFETY_REGION_EXIT event.
+  /// This value is guaranteed to be greater than
+  /// GVR_PROPERTY_SAFETY_CYLINDER_ENTER_RADIUS.
   /// Type: float
-  GVR_PROPERTY_SAFETY_CYLINDER_OUTER_RADIUS = 5,
+  GVR_PROPERTY_SAFETY_CYLINDER_EXIT_RADIUS = 5,
+
+  /// The current status of the head tracker, if available.
+  /// Type: gvr_flags
+  GVR_PROPERTY_TRACKING_STATUS = 6
 } gvr_property_type;
 
-// Safety region types exposed from the GVR_PROPERTY_SAFETY_REGION property.
+/// Safety region types exposed from the GVR_PROPERTY_SAFETY_REGION property.
 typedef enum {
   GVR_SAFETY_REGION_NONE = 0,
 
-  // A safety region defined by a vertically-oriented cylinder, extending
-  // infinitely along the Y axis, and centered at the start space origin.
-  // Extents can be queried with the GVR_PROPERTY_SAFETY_CYLINDER_INNER_RADIUS
-  // and GVR_PROPERTY_SAFETY_CYLINDER_OUTER_RADIUS property keys.
+  /// A safety region defined by a vertically-oriented cylinder, extending
+  /// infinitely along the Y axis, and centered at the start space origin.
+  /// Extents can be queried with the GVR_PROPERTY_SAFETY_CYLINDER_INNER_RADIUS
+  /// and GVR_PROPERTY_SAFETY_CYLINDER_OUTER_RADIUS property keys.
   GVR_SAFETY_REGION_CYLINDER = 1,
 } gvr_safety_region_type;
 
@@ -638,9 +709,23 @@ typedef enum {
   /// the gvr_safety_region_type.
   /// Event data type: none
   GVR_EVENT_SAFETY_REGION_ENTER = 3,
+
+  /// Notification that head tracking was resumed (or started for the first
+  /// time). Before this event is sent, head tracking will always return the
+  /// identity pose. This event is usually preceded in the same frame by a
+  /// GVR_EVENT_RECENTER of recenter_type GVR_RECENTER_EVENT_RESTART.
+  /// Event data type: none
+  GVR_EVENT_HEAD_TRACKING_RESUMED = 4,
+
+  /// Notification that head tracking was paused.
+  /// Event data type: none
+  GVR_EVENT_HEAD_TRACKING_PAUSED = 5,
 } gvr_event_type;
 
 /// @}
+
+// Forward declaration of Android AHardwareBuffer.
+typedef struct AHardwareBuffer AHardwareBuffer;
 
 #ifdef __cplusplus
 }  // extern "C"
@@ -785,6 +870,12 @@ const ControllerBatteryLevel kControllerBatteryLevelFull =
     static_cast<ControllerBatteryLevel>(
         GVR_CONTROLLER_BATTERY_LEVEL_FULL);
 
+enum {
+  kTrackingStatusFlagInvalid = GVR_TRACKING_STATUS_FLAG_INVALID,
+  kTrackingStatusFlagInitializing = GVR_TRACKING_STATUS_FLAG_INITIALIZING,
+  kTrackingStatusFlagHas6Dof = GVR_TRACKING_STATUS_FLAG_HAS_6DOF
+};
+
 /// An uninitialized external surface ID.
 const int32_t kUninitializedExternalSurface = GVR_BUFFER_INDEX_EXTERNAL_SURFACE;
 /// The default source buffer index for viewports.
@@ -859,6 +950,8 @@ const ArmModelBehavior kArmModelBehaviorFollowGaze =
     static_cast<ArmModelBehavior>(GVR_ARM_MODEL_FOLLOW_GAZE);
 const ArmModelBehavior kArmModelBehaviorSyncGaze =
     static_cast<ArmModelBehavior>(GVR_ARM_MODEL_SYNC_GAZE);
+const ArmModelBehavior kArmModelBehaviorIgnoreGaze =
+    static_cast<ArmModelBehavior>(GVR_ARM_MODEL_IGNORE_GAZE);
 
 typedef gvr_error Error;
 const Error kErrorNone = static_cast<Error>(GVR_ERROR_NONE);
